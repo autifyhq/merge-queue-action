@@ -1,109 +1,49 @@
 <p align="center">
-  <a href="https://github.com/actions/typescript-action/actions"><img alt="typescript-action status" src="https://github.com/actions/typescript-action/workflows/build-test/badge.svg"></a>
+  <a href="https://github.com/autifyhq/merge-queue-action/actions"><img alt="merge-queue-action status" src="https://github.com/autifyhq/merge-queue-action/workflows/build-test/badge.svg"></a>
 </p>
 
-# Create a JavaScript Action using TypeScript
+# Merge Queue Action
 
-Use this template to bootstrap the creation of a TypeScript action.:rocket:
+_This action is created based on [TypeScript Action Template](https://github.com/actions/typescript-action)._
 
-This template includes compilation support, tests, a validation workflow, publishing, and versioning guidance.
+## Setup
 
-If you are new, there's also a simpler introduction. See the [Hello World JavaScript Action](https://github.com/actions/hello-world-javascript-action)
+1. Create the following labels to your repository:
+   - `command:queue-for-merging`
+   - `bot:merging`
+   - `bot:queued`
+2. Create `.github/workflows/merge-queue.yml` in your repository with the following content:
 
-## Create an action from this template
+   ```yml
+   name: merge-queue
 
-Click the `Use this Template` and provide the new repo details for your action
+   on:
+     status:
+     pull_request:
+       types:
+         - labeled
 
-## Code in Main
+   jobs:
+     merge-queue:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: autifyhq/merge-queue-action@v0.0.1
+           env:
+             GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+   ```
 
-> First, you'll need to have a reasonably modern version of `node` handy. This won't work with versions older than 9, for instance.
+   The access token needs to have `repo` permission, and it has to have an owner access to the repository as well, otherwise it wouldn't be able to get the branch protection requirement from the API.
 
-Install the dependencies
+## Usage
 
-```bash
-$ npm install
-```
+You can merge a PR by adding `command:queue-for-merging` label to your PR. The action will take care of the rest.
 
-Build the typescript and package it for distribution
+- If there’s no merging PR, the PR will be a merging PR (`bot:merging`)
+- If there a merging PR already, the PR will be in the queue (`bot:queued`)
 
-```bash
-$ npm run build && npm run package
-```
+The action will do the following to the merging PR:
 
-Run the tests :heavy_check_mark:
-
-```bash
-$ npm test
-
- PASS  ./index.test.js
-  ✓ throws invalid number (3ms)
-  ✓ wait 500 ms (504ms)
-  ✓ test runs (95ms)
-
-...
-```
-
-## Change action.yml
-
-The action.yml contains defines the inputs and output for your action.
-
-Update the action.yml with your name, description, inputs and outputs for your action.
-
-See the [documentation](https://help.github.com/en/articles/metadata-syntax-for-github-actions)
-
-## Change the Code
-
-Most toolkit and CI/CD operations involve async operations so the action is run in an async function.
-
-```javascript
-import * as core from '@actions/core';
-...
-
-async function run() {
-  try {
-      ...
-  }
-  catch (error) {
-    core.setFailed(error.message);
-  }
-}
-
-run()
-```
-
-See the [toolkit documentation](https://github.com/actions/toolkit/blob/master/README.md#packages) for the various packages.
-
-## Publish to a distribution branch
-
-Actions are run from GitHub repos so we will checkin the packed dist folder.
-
-Then run [ncc](https://github.com/zeit/ncc) and push the results:
-
-```bash
-$ npm run package
-$ git add dist
-$ git commit -a -m "prod dependencies"
-$ git push origin releases/v1
-```
-
-Note: We recommend using the `--license` option for ncc, which will create a license file for all of the production node modules used in your project.
-
-Your action is now published! :rocket:
-
-See the [versioning documentation](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md)
-
-## Validate
-
-You can now validate the action by referencing `./` in a workflow in your repo (see [test.yml](.github/workflows/test.yml))
-
-```yaml
-uses: ./
-with:
-  milliseconds: 1000
-```
-
-See the [actions tab](https://github.com/actions/typescript-action/actions) for runs of this action! :rocket:
-
-## Usage:
-
-After testing you can [create a v1 tag](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md) to reference the stable and latest V1 action
+- Merge the PR if it’s up-to-date and all check pass
+- Make it up-to-date if it isn't. Will merge when all check pass and remove it from merging status
+- If it’s unable to make the PR up-to-date, or some required check fail, the PR will be removed from merging status
+- When the PR is removed from merging status, it’ll look for a next PR in the queue, and process the same way.
