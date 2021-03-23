@@ -1,6 +1,9 @@
 name: "Merge Queue Action"
-description: "Merge PRs in a queueing manner"
+description: "GitHub action to help merge PRs in a queueing manner"
 author: "Kanitkorn S."
 runs:
   using: "node12"
   main: "dist/index.js"
+branding:
+  icon: "git-merge"
+  color: "green"
