@@ -27,7 +27,7 @@ _This action is created based on [TypeScript Action Template](https://github.com
      merge-queue:
        runs-on: ubuntu-latest
        steps:
-         - uses: autifyhq/merge-queue-action@v0.0.1
+         - uses: autifyhq/merge-queue-action@v0.0.2
            env:
              GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
    ```
