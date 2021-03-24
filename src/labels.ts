@@ -3,11 +3,11 @@ export interface Label {
   name: string
 }
 
-enum BotLabel {
-  CommandQueueForMerging = "command:queue-for-merging",
-  BotMerging = "bot:merging",
-  BotQueued = "bot:queued",
-}
+const BotLabel = {
+  CommandQueueForMerging: "command:queue-for-merging",
+  BotMerging: "bot:merging",
+  BotQueued: "bot:queued",
+} as const
 
 export function isCommandQueueForMergingLabel(
   label: Pick<Label, "name">
