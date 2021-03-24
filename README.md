@@ -47,3 +47,18 @@ The action will do the following to the merging PR:
 - Make it up-to-date if it isn't. Will merge when all check pass and remove it from merging status
 - If it’s unable to make the PR up-to-date, or some required check fail, the PR will be removed from merging status
 - When the PR is removed from merging status, it’ll look for a next PR in the queue, and process the same way.
+
+### Limitation
+
+- Only support required checks from CircleCI https://github.com/autifyhq/merge-queue-action/issues/24
+- Only support base branch that has a required check https://github.com/autifyhq/merge-queue-action/issues/23
+
+PRs welcome :)
+
+## Releasing
+
+1. Bump the version in `package.json`
+2. Run `npm install && npm run all`
+3. Update the version in code example in `README.md`
+4. Commit and push to the `main` branch
+5. Create a release in GitHub with the new version; e.g. `0.4.0` in `package.json`, the release should have a tag `v0.4.0`.
