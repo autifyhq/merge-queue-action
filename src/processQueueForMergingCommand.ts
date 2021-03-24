@@ -12,7 +12,7 @@ import {
   isBotQueuedLabel,
   isCommandQueueForMergingLabel,
 } from "./labels"
-import { WebhookPrData, WebhookRepoData } from "./types/types"
+import { PullRequest, Repository } from "@octokit/webhooks-definitions/schema"
 
 /**
  *
@@ -20,8 +20,8 @@ import { WebhookPrData, WebhookRepoData } from "./types/types"
  * @param repo Reposotiry data from the webhook
  */
 export async function processQueueForMergingCommand(
-  pr: WebhookPrData,
-  repo: WebhookRepoData
+  pr: PullRequest,
+  repo: Repository
 ): Promise<void> {
   const {
     repository: {

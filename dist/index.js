@@ -26,12 +26,11 @@ exports.graphqlClient = graphql_1.graphql.defaults({
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.isBotQueuedLabel = exports.isBotMergingLabel = exports.isCommandQueueForMergingLabel = void 0;
-var BotLabel;
-(function (BotLabel) {
-    BotLabel["CommandQueueForMerging"] = "command:queue-for-merging";
-    BotLabel["BotMerging"] = "bot:merging";
-    BotLabel["BotQueued"] = "bot:queued";
-})(BotLabel || (BotLabel = {}));
+const BotLabel = {
+    CommandQueueForMerging: "command:queue-for-merging",
+    BotMerging: "bot:merging",
+    BotQueued: "bot:queued",
+};
 function isCommandQueueForMergingLabel(label) {
     return label.name === BotLabel.CommandQueueForMerging;
 }
@@ -85,7 +84,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(186));
 const fs = __importStar(__nccwpck_require__(747));
 const processQueueForMergingCommand_1 = __nccwpck_require__(356);
-const processStatusRequest_1 = __nccwpck_require__(271);
+const processNonPendingStatus_1 = __nccwpck_require__(239);
 const labels_1 = __nccwpck_require__(579);
 const process_1 = __nccwpck_require__(765);
 if (!process.env.GITHUB_EVENT_PATH) {
@@ -98,18 +97,13 @@ function run() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             if (eventName === "pull_request") {
-                if (eventPayload.action === "labeled" &&
-                    labels_1.isCommandQueueForMergingLabel(eventPayload.label)) {
-                    yield processQueueForMergingCommand_1.processQueueForMergingCommand(eventPayload.pull_request, eventPayload.repository);
-                    core.info("Finish process queue-for-merging command");
-                }
+                yield processPullRequestEvent(eventPayload);
             }
-            if (eventName === "status") {
-                if (eventPayload.state === "success" ||
-                    eventPayload.state === "failure") {
-                    yield processStatusRequest_1.processStatusRequest(eventPayload.repository, eventPayload.commit, eventPayload.context, eventPayload.state);
-                    core.info("Finish process status event");
-                }
+            else if (eventName === "status") {
+                yield processStatusEvent(eventPayload);
+            }
+            else {
+                core.info(`Event does not need to be processed: ${eventName}`);
             }
         }
         catch (error) {
@@ -118,6 +112,25 @@ function run() {
     });
 }
 run();
+function processPullRequestEvent(pullRequestEvent) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (pullRequestEvent.action !== "labeled" ||
+            !labels_1.isCommandQueueForMergingLabel(pullRequestEvent.label)) {
+            return;
+        }
+        yield processQueueForMergingCommand_1.processQueueForMergingCommand(pullRequestEvent.pull_request, pullRequestEvent.repository);
+        core.info("Finish process queue-for-merging command");
+    });
+}
+function processStatusEvent(statusEvent) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (statusEvent.state === "pending") {
+            return;
+        }
+        yield processNonPendingStatus_1.processNonPendingStatus(statusEvent.repository, statusEvent.commit, statusEvent.context, statusEvent.state);
+        core.info("Finish process status event");
+    });
+}
 
 
 /***/ }),
@@ -258,6 +271,165 @@ exports.mergePr = mergePr;
 
 /***/ }),
 
+/***/ 239:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.processNonPendingStatus = void 0;
+const core = __importStar(__nccwpck_require__(186));
+const graphqlClient_1 = __nccwpck_require__(10);
+const mutations_1 = __nccwpck_require__(701);
+const labels_1 = __nccwpck_require__(579);
+/**
+ *
+ * @param repo Repository object
+ * @param commit Commit object
+ * @param context Check name
+ * @param state Status state
+ */
+function processNonPendingStatus(repo, commit, context, state) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { repository: { branchProtectionRules, labels: { nodes: labelNodes }, }, } = yield fetchData(repo.owner.login, repo.name);
+        const mergingLabel = labelNodes.find(labels_1.isBotMergingLabel);
+        if (!mergingLabel || mergingLabel.pullRequests.nodes.length === 0) {
+            // No merging PR to process
+            return;
+        }
+        const mergingPr = mergingLabel.pullRequests.nodes[0];
+        const latestCommit = mergingPr.commits.nodes[0].commit;
+        if (commit.node_id !== latestCommit.id) {
+            // Commit that trigger this hook is not the latest commit of the merging PR
+            return;
+        }
+        const baseBranchRule = branchProtectionRules.nodes.find((rule) => rule.pattern === mergingPr.baseRef.name);
+        if (!baseBranchRule) {
+            // TODO: No protection rule for merging this PR. Merge immediately?
+            return;
+        }
+        const requiredCheckNames = baseBranchRule.requiredStatusCheckContexts;
+        if (state === "success") {
+            const isAllRequiredCheckPassed = requiredCheckNames.every((checkName) => {
+                if (!checkName.includes("ci/circleci")) {
+                    // TODO: Support GitHub Action. Can't get `statusCheckRollup` to work in GitHub API Explorer for some reason.
+                    return true;
+                }
+                return latestCommit.status.contexts.find((latestCommitContext) => latestCommitContext.context === checkName &&
+                    latestCommitContext.state === "SUCCESS");
+            });
+            if (!isAllRequiredCheckPassed) {
+                // Some required check is still pending
+                return;
+            }
+            core.info("##### ALL CHECK PASS");
+            try {
+                yield mutations_1.mergePr(mergingPr, repo.node_id);
+                // TODO: Delete head branch of that PR (maybe)(might not if merge unsuccessful)
+            }
+            catch (error) {
+                core.info("Unable to merge the PR.");
+                core.error(error);
+            }
+        }
+        else {
+            if (!requiredCheckNames.includes(context)) {
+                // The failed check from this webhook is not in the required status check, so we can ignore it.
+                return;
+            }
+        }
+        const queuedLabel = labelNodes.find(labels_1.isBotQueuedLabel);
+        if (!queuedLabel) {
+            yield mutations_1.removeLabel(mergingLabel, mergingPr.id);
+            return;
+        }
+        yield mutations_1.stopMergingCurrentPrAndProcessNextPrInQueue(mergingLabel, queuedLabel, mergingPr.id, repo.node_id);
+    });
+}
+exports.processNonPendingStatus = processNonPendingStatus;
+/**
+ * Fetch all the data for processing success status check webhook
+ * @param owner Organzation name
+ * @param repo Repository name
+ */
+function fetchData(owner, repo) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return graphqlClient_1.graphqlClient(`query allLabels($owner: String!, $repo: String!) {
+         repository(owner:$owner, name:$repo) {
+           branchProtectionRules(last: 10) {
+             nodes {
+               pattern
+               requiredStatusCheckContexts
+             }
+           }
+           labels(last: 50) {
+             nodes {
+               id
+               name
+               pullRequests(first: 20) {
+                 nodes {
+                   id
+                   number
+                   title
+                   baseRef {
+                     name
+                   }
+                   headRef {
+                     name
+                   }
+                   commits(last: 1) {
+                     nodes {
+                       commit {
+                         id
+                         status {
+                           contexts {
+                             context
+                             state
+                           }
+                         }
+                       }
+                     }
+                   }
+                 }
+               }
+             }
+           }
+         }
+       }`, { owner, repo });
+    });
+}
+
+
+/***/ }),
+
 /***/ 356:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -387,165 +559,6 @@ function fetchData(owner, repo) {
                    }
                    headRef {
                      name
-                   }
-                 }
-               }
-             }
-           }
-         }
-       }`, { owner, repo });
-    });
-}
-
-
-/***/ }),
-
-/***/ 271:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.processStatusRequest = void 0;
-const core = __importStar(__nccwpck_require__(186));
-const graphqlClient_1 = __nccwpck_require__(10);
-const mutations_1 = __nccwpck_require__(701);
-const labels_1 = __nccwpck_require__(579);
-/**
- *
- * @param repo Repository object
- * @param commit Commit object
- * @param context Check name
- * @param state Status state
- */
-function processStatusRequest(repo, commit, context, state) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const { repository: { branchProtectionRules, labels: { nodes: labelNodes }, }, } = yield fetchData(repo.owner.login, repo.name);
-        const mergingLabel = labelNodes.find(labels_1.isBotMergingLabel);
-        if (!mergingLabel || mergingLabel.pullRequests.nodes.length === 0) {
-            // No merging PR to process
-            return;
-        }
-        const mergingPr = mergingLabel.pullRequests.nodes[0];
-        const latestCommit = mergingPr.commits.nodes[0].commit;
-        if (commit.node_id !== latestCommit.id) {
-            // Commit that trigger this hook is not the latest commit of the merging PR
-            return;
-        }
-        const baseBranchRule = branchProtectionRules.nodes.find((rule) => rule.pattern === mergingPr.baseRef.name);
-        if (!baseBranchRule) {
-            // TODO: No protection rule for merging this PR. Merge immediately?
-            return;
-        }
-        const requiredCheckNames = baseBranchRule.requiredStatusCheckContexts;
-        if (state === "success") {
-            const isAllRequiredCheckPassed = requiredCheckNames.every((checkName) => {
-                if (!checkName.includes("ci/circleci")) {
-                    // TODO: Support GitHub Action. Can't get `statusCheckRollup` to work in GitHub API Explorer for some reason.
-                    return true;
-                }
-                return latestCommit.status.contexts.find((latestCommitContext) => latestCommitContext.context === checkName &&
-                    latestCommitContext.state === "SUCCESS");
-            });
-            if (!isAllRequiredCheckPassed) {
-                // Some required check is still pending
-                return;
-            }
-            core.info("##### ALL CHECK PASS");
-            try {
-                yield mutations_1.mergePr(mergingPr, repo.node_id);
-                // TODO: Delete head branch of that PR (maybe)(might not if merge unsuccessful)
-            }
-            catch (error) {
-                core.info("Unable to merge the PR.");
-                core.error(error);
-            }
-        }
-        else {
-            if (!requiredCheckNames.includes(context)) {
-                // The failed check from this webhook is not in the required status check, so we can ignore it.
-                return;
-            }
-        }
-        const queuedLabel = labelNodes.find(labels_1.isBotQueuedLabel);
-        if (!queuedLabel) {
-            yield mutations_1.removeLabel(mergingLabel, mergingPr.id);
-            return;
-        }
-        yield mutations_1.stopMergingCurrentPrAndProcessNextPrInQueue(mergingLabel, queuedLabel, mergingPr.id, repo.node_id);
-    });
-}
-exports.processStatusRequest = processStatusRequest;
-/**
- * Fetch all the data for processing success status check webhook
- * @param owner Organzation name
- * @param repo Repository name
- */
-function fetchData(owner, repo) {
-    return __awaiter(this, void 0, void 0, function* () {
-        return graphqlClient_1.graphqlClient(`query allLabels($owner: String!, $repo: String!) {
-         repository(owner:$owner, name:$repo) {
-           branchProtectionRules(last: 10) {
-             nodes {
-               pattern
-               requiredStatusCheckContexts
-             }
-           }
-           labels(last: 50) {
-             nodes {
-               id
-               name
-               pullRequests(first: 20) {
-                 nodes {
-                   id
-                   number
-                   title
-                   baseRef {
-                     name
-                   }
-                   headRef {
-                     name
-                   }
-                   commits(last: 1) {
-                     nodes {
-                       commit {
-                         id
-                         status {
-                           contexts {
-                             context
-                             state
-                           }
-                         }
-                       }
-                     }
                    }
                  }
                }

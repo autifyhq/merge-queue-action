@@ -1,9 +1,14 @@
 import * as core from "@actions/core"
 import * as fs from "fs"
 import { processQueueForMergingCommand } from "./processQueueForMergingCommand"
-import { processStatusRequest } from "./processStatusRequest"
+import { processNonPendingStatus } from "./processNonPendingStatus"
 import { isCommandQueueForMergingLabel } from "./labels"
 import { exit } from "process"
+import {
+  PullRequestEvent,
+  StatusEvent,
+  WebhookEvent,
+} from "@octokit/webhooks-definitions/schema"
 
 if (!process.env.GITHUB_EVENT_PATH) {
   core.setFailed("GITHUB_EVENT_PATH is not available")
@@ -11,38 +16,18 @@ if (!process.env.GITHUB_EVENT_PATH) {
 }
 
 const eventName = process.env.GITHUB_EVENT_NAME
-const eventPayload = JSON.parse(
+const eventPayload: WebhookEvent = JSON.parse(
   fs.readFileSync(process.env.GITHUB_EVENT_PATH).toString()
 )
 
 async function run(): Promise<void> {
   try {
     if (eventName === "pull_request") {
-      if (
-        eventPayload.action === "labeled" &&
-        isCommandQueueForMergingLabel(eventPayload.label)
-      ) {
-        await processQueueForMergingCommand(
-          eventPayload.pull_request,
-          eventPayload.repository
-        )
-        core.info("Finish process queue-for-merging command")
-      }
-    }
-
-    if (eventName === "status") {
-      if (
-        eventPayload.state === "success" ||
-        eventPayload.state === "failure"
-      ) {
-        await processStatusRequest(
-          eventPayload.repository,
-          eventPayload.commit,
-          eventPayload.context,
-          eventPayload.state
-        )
-        core.info("Finish process status event")
-      }
+      await processPullRequestEvent(eventPayload as PullRequestEvent)
+    } else if (eventName === "status") {
+      await processStatusEvent(eventPayload as StatusEvent)
+    } else {
+      core.info(`Event does not need to be processed: ${eventName}`)
     }
   } catch (error) {
     core.setFailed(error.message)
@@ -50,3 +35,32 @@ async function run(): Promise<void> {
 }
 
 run()
+
+async function processPullRequestEvent(
+  pullRequestEvent: PullRequestEvent
+): Promise<void> {
+  if (
+    pullRequestEvent.action !== "labeled" ||
+    !isCommandQueueForMergingLabel(pullRequestEvent.label)
+  ) {
+    return
+  }
+  await processQueueForMergingCommand(
+    pullRequestEvent.pull_request,
+    pullRequestEvent.repository
+  )
+  core.info("Finish process queue-for-merging command")
+}
+
+async function processStatusEvent(statusEvent: StatusEvent): Promise<void> {
+  if (statusEvent.state === "pending") {
+    return
+  }
+  await processNonPendingStatus(
+    statusEvent.repository,
+    statusEvent.commit,
+    statusEvent.context,
+    statusEvent.state
+  )
+  core.info("Finish process status event")
+}

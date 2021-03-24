@@ -6,7 +6,7 @@ import {
   removeLabel,
 } from "./mutations"
 import { isBotMergingLabel, isBotQueuedLabel } from "./labels"
-import { WebhookRepoData } from "./types/types"
+import { Repository } from "@octokit/webhooks-definitions/schema"
 
 /**
  *
@@ -15,11 +15,11 @@ import { WebhookRepoData } from "./types/types"
  * @param context Check name
  * @param state Status state
  */
-export async function processStatusRequest(
-  repo: WebhookRepoData,
+export async function processNonPendingStatus(
+  repo: Repository,
   commit: { node_id: string },
   context: string,
-  state: "success" | "failure"
+  state: "success" | "failure" | "error"
 ): Promise<void> {
   const {
     repository: {
