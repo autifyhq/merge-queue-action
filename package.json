@@ -1,6 +1,6 @@
 {
   "name": "merge-queue-action",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "GitHub action to help merge PRs in a queueing manner",
   "main": "lib/main.js",
   "scripts": {
