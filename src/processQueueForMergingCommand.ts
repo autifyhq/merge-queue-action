@@ -28,7 +28,7 @@ export async function processQueueForMergingCommand(
       labels: { nodes: labelNodes },
     },
   } = await fetchData(repo.owner.login, repo.name)
-
+  core.info("Hello World")
   // Remove `command:queue-for-merging` label
   const commandLabel = labelNodes.find(isCommandQueueForMergingLabel)
   if (!commandLabel) {
