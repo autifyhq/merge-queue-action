@@ -62,7 +62,7 @@ export async function processNonPendingStatus(
           latestCommitContext.state === "SUCCESS"
       )
     })
-    if (!isAllRequiredCheckPassed) {
+    if (!isAllRequiredCheckPassed && requiredCheckNames.length > 0) {
       // Some required check is still pending
       return
     }

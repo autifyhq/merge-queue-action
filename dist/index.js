@@ -346,7 +346,7 @@ function processNonPendingStatus(repo, commit, context, state) {
                 return latestCommit.status.contexts.find((latestCommitContext) => latestCommitContext.context === checkName &&
                     latestCommitContext.state === "SUCCESS");
             });
-            if (!isAllRequiredCheckPassed) {
+            if (!isAllRequiredCheckPassed && requiredCheckNames.length > 0) {
                 // Some required check is still pending
                 return;
             }

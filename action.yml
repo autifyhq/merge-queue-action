@@ -1,4 +1,4 @@
-name: "Merge Queue Action"
+name: "Merge Queue Action (Required Check not Mandatory)"
 description: "GitHub action to help merge PRs in a queueing manner"
 author: "Kanitkorn S."
 runs:
